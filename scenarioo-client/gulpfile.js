@@ -15,6 +15,7 @@ var gulp = require('gulp'),
     ngAnnotate = require('gulp-ng-annotate'),
     uglify = require('gulp-uglify'),
     protractor = require('gulp-protractor').protractor;
+    webdriver_update = require('gulp-protractor').webdriver_update; // eslint-disable-line camelcase, no-undef
 
 var files = {
     templates: ['./app/template/**/*.html'],
@@ -124,6 +125,8 @@ gulp.task('test-e2e', function () {
         });
 });
 
+gulp.task('webdriver_update', webdriver_update); // eslint-disable-line no-undef
+
 /**
  * Run protractor ui tests and generate Scenarioo documentation from them.
  */
@@ -157,14 +160,16 @@ gulp.task('environmentConstants', function (done) {
     });
     angularConfigFileContent += '.constant(\'ENV\', \'' + selectedEnvironment + '\');\n';
 
-    fs.writeFile('./app/scripts/environment_config.js', angularConfigFileContent, done);
+    fs.writeFile('./app/scripts/environment_config.js', angularConfigFileContent);
+    done();
 });
 
 /**
  * Delete the 'dist' folder.
  */
 gulp.task('clean-dist', function (done) {
-    del('./dist', done);
+    del('./dist');
+    done();
 });
 
 /**

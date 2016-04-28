@@ -48,11 +48,6 @@ public class ConfigurationRepository {
 		}
 	}
 
-	public File getDesignDataDirectory() {
-		File rootFolder = getDocumentationDataDirectory();
-		return new File(rootFolder, "scenarioo-application-data/sketcher");
-	}
-
 	private File getExampleDocumentationDirectoryAsFallback() {
 		final URL exampleDocuDataPath = Configuration.class.getClassLoader().getResource(
 				EXAMPLE_DOCUMENTATION_DIRECTORY);

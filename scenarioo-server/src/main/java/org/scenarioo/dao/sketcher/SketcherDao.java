@@ -17,11 +17,13 @@
 
 package org.scenarioo.dao.sketcher;
 
+import static org.scenarioo.api.rules.CharacterChecker.*;
+
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.StringReader;
 import java.util.List;
 
 import org.apache.batik.ext.awt.image.codec.png.PNGRegistryEntry;
@@ -36,43 +38,45 @@ import org.scenarioo.api.util.xml.ScenarioDocuXMLFileUtil;
 import org.scenarioo.model.sketcher.Issue;
 import org.scenarioo.model.sketcher.ScenarioSketch;
 import org.scenarioo.model.sketcher.StepSketch;
+import org.scenarioo.repository.ConfigurationRepository;
+import org.scenarioo.repository.RepositoryLocator;
 
-public class SketcherFiles {
+/**
+ * All file access for the issue sketcher feature.
+ */
+public class SketcherDao {
 
-	private static final Logger LOGGER = Logger.getLogger(SketcherFiles.class);
+	public static final String SKETCHER_DIRECTORY = "scenarioo-application-data/sketcher";
 
+	private static final Logger LOGGER = Logger.getLogger(SketcherDao.class);
+
+	private static final String ORIGINAL_PNG_FILENAME = "original.png";
 	private static final String SKETCH_PNG_FILENAME = "sketch.png";
 	private static final String SKETCH_SVG_FILENAME = "sketch.svg";
 	private static final String STEP_SKETCH_XML_FILENAME = "stepSketch.xml";
 	private static final String SCENARIO_SKETCH_XML_FILENAME = "scenarioSketch.xml";
 	private static final String ISSUE_XML_FILENAME = "issue.xml";
 
-	private final File rootDirectory;
+	private final File sketcherDirectory;
 
 	private final PNGTranscoder transcoder = new PNGTranscoder();
 
-	public SketcherFiles(final File rootDirectory) {
-		this.rootDirectory = rootDirectory;
-	}
 
-	public void createRootDirectoryIfNecessary() {
-		createDirectoryIfItDoesNotExist(rootDirectory);
-	}
-
-	public void assertRootDirectoryExists() {
-		if (!rootDirectory.exists()) {
-			throw new IllegalArgumentException("Directory for design storage does not exist: "
-					+ rootDirectory.getAbsolutePath());
-		}
+	/**
+	 * The {@link ConfigurationRepository} has to be initialized before you create an instance of this DAO.
+	 */
+	public SketcherDao() {
+		final ConfigurationRepository configurationRepository = RepositoryLocator.INSTANCE.getConfigurationRepository();
+		File documentationDataDirectory = configurationRepository.getDocumentationDataDirectory();
+		this.sketcherDirectory = new File(documentationDataDirectory, SketcherDao.SKETCHER_DIRECTORY);
 	}
 
 	public File getRootDirectory() {
-		assertRootDirectoryExists();
-		return rootDirectory;
+		return sketcherDirectory;
 	}
 
 	public File getBranchDirectory(final String branchName) {
-		return new File(rootDirectory, FilesUtil.encodeName(branchName));
+		return new File(sketcherDirectory, FilesUtil.encodeName(branchName));
 	}
 
 	public File getIssueDirectory(final String branchName, final String issueId) {
@@ -124,6 +128,10 @@ public class SketcherFiles {
 				SKETCH_SVG_FILENAME);
 	}
 
+	/**
+	 * @param pngFilename
+	 *            Specify whether you want to load the original PNG file or the sketch PNG file.
+	 */
 	public File getStepSketchPngFile(final String branchName, final String issueId, final String scenarioSketchId,
 			final String stepSketchId, final String pngFilename) {
 		return new File(getStepSketchDirectory(branchName, issueId, scenarioSketchId, stepSketchId), pngFilename);
@@ -135,74 +143,57 @@ public class SketcherFiles {
 				STEP_SKETCH_XML_FILENAME);
 	}
 
-	public void createIssueDirectoryIfNotNecessary(final String branchName, final String issueId) {
-		final File issueDirectory = getIssueDirectory(branchName, issueId);
-		createDirectoryIfItDoesNotExist(issueDirectory);
-	}
 
 	public void persistIssue(final String branchName, final Issue issue) {
-		createBranchDirectoryIfNecessary(branchName);
-		createIssueDirectoryIfNotNecessary(branchName, issue.getIssueId());
 		final File destinationFile = getIssueFile(branchName, issue.getIssueId());
+		createParentDirectoryIfNeeded(destinationFile);
 		ScenarioDocuXMLFileUtil.marshal(issue, destinationFile);
-	}
-
-	private void createBranchDirectoryIfNecessary(final String branchName) {
-		final File branchFolder = getBranchDirectory(branchName);
-		createDirectoryIfItDoesNotExist(branchFolder);
-	}
-
-	public void createScenarioSketchDirectoryIfNecessary(final String branchName, final String issueId,
-			final String scenarioSketchId) {
-		final File scenarioSketchDir = getScenarioSketchDirectory(branchName, issueId, scenarioSketchId);
-		createDirectoryIfItDoesNotExist(scenarioSketchDir);
 	}
 
 	public void persistScenarioSketch(final String branchName, final String issueId,
 			final ScenarioSketch scenarioSketch) {
-		createScenarioSketchDirectoryIfNecessary(branchName, issueId, scenarioSketch.getScenarioSketchId());
 		final File scenarioSketchFile = getScenarioSketchFile(branchName, issueId, scenarioSketch.getScenarioSketchId());
+		createParentDirectoryIfNeeded(scenarioSketchFile);
 		ScenarioDocuXMLFileUtil.marshal(scenarioSketch, scenarioSketchFile);
 	}
 
-	public void createStepSketchDirectory(final String branchName, final String issueId,
-			final String scenarioSketchId, final String stepSketchId) {
-		final File stepSketchDirectory = getStepSketchDirectory(branchName, issueId, scenarioSketchId, stepSketchId);
-		createDirectoryIfItDoesNotExist(stepSketchDirectory);
-	}
-
-	private void createDirectoryIfItDoesNotExist(final File directory) {
+	/**
+	 * Ensures that a file's parent directory is created if it does not exist yet.
+	 * Will throw an exception, if the directory was not created properly.
+     */
+	private void createParentDirectoryIfNeeded(final File file) {
+		File directory = file.getParentFile();
+		directory.mkdirs();
 		if (!directory.exists()) {
-			directory.mkdirs();
-		}
-		if (!directory.exists()) {
-			throw new RuntimeException("Directory not created: " + directory);
+			throw new RuntimeException("Directory was not able to be created (check user rights for the directory and available disk space): " + directory.getAbsolutePath());
 		}
 	}
 
 	public void persistStepSketch(final String branchName, final String issueId,
 			final String scenarioSketchId, final StepSketch stepSketch) {
 		final File stepSketchXmlFile = getStepSketchXmlFile(branchName, issueId, scenarioSketchId, stepSketch);
+		createParentDirectoryIfNeeded(stepSketchXmlFile);
 		ScenarioDocuXMLFileUtil.marshal(stepSketch, stepSketchXmlFile);
 	}
 
 	public void persistSketchAsSvgAndPng(final String branchName, final String issueId,
 			final String scenarioSketchId, final StepSketch stepSketch) {
 		storeSvgFile(branchName, issueId, scenarioSketchId, stepSketch);
-		storePngFile(branchName, issueId, scenarioSketchId, stepSketch.getStepSketchId());
+		storePngFile(branchName, issueId, scenarioSketchId, stepSketch.getStepSketchId(), stepSketch.getSvgXmlString());
 	}
 
+	/**
+	 * Create PNG file from SVG file.
+	 */
 	private void storePngFile(final String branchName, final String issueId, final String scenarioSketchId,
-			final String stepSketchId) {
-		File svgFile = getStepSketchSvgFile(branchName, issueId, scenarioSketchId, stepSketchId);
+			final String stepSketchId, final String svgString) {
 		File pngFile = getStepSketchPngFile(branchName, issueId, scenarioSketchId, stepSketchId,
 				SKETCH_PNG_FILENAME);
 
 		try {
-			final FileInputStream istream = new FileInputStream(svgFile);
 			final ImageTagRegistry registry = ImageTagRegistry.getRegistry();
 			registry.register(new PNGRegistryEntry());
-			final TranscoderInput input = new TranscoderInput(istream);
+			final TranscoderInput input = new TranscoderInput(new StringReader(svgString));
 			final FileOutputStream outputStream = new FileOutputStream(pngFile);
 			final TranscoderOutput output = new TranscoderOutput(outputStream);
 			transcoder.transcode(input, output);
@@ -217,7 +208,7 @@ public class SketcherFiles {
 	private void storeSvgFile(final String branchName, final String issueId, final String scenarioSketchId,
 			final StepSketch stepSketch) {
 		File svgFile = getStepSketchSvgFile(branchName, issueId, scenarioSketchId, stepSketch.getStepSketchId());
-
+		createParentDirectoryIfNeeded(svgFile);
 		try {
 			final FileWriter writer = new FileWriter(svgFile);
 			writer.write(stepSketch.getSvgXmlString());
@@ -237,12 +228,48 @@ public class SketcherFiles {
 			final String scenarioSketchId, final String stepSketchId) {
 		try {
 			final File destination = new File(getStepSketchDirectory(branchName, issueId, scenarioSketchId,
-					stepSketchId), "original.png");
+					stepSketchId), ORIGINAL_PNG_FILENAME);
 			FileUtils.copyFile(originalScreenshot, destination);
 		} catch (final IOException e) {
 			LOGGER.error("Couldn't copy original screenshot to stepsketch!", e);
 			throw new RuntimeException(e);
 		}
+	}
+
+	public List<Issue> loadIssues(final String branchName) {
+		final List<File> files = this.getIssueFiles(checkIdentifier(branchName));
+		return ScenarioDocuXMLFileUtil.unmarshalListOfFiles(Issue.class, files);
+	}
+
+	public Issue loadIssue(final String branchName, final String issueId) {
+		final File file = this.getIssueFile(checkIdentifier(branchName), checkIdentifier(issueId));
+		return ScenarioDocuXMLFileUtil.unmarshal(Issue.class, file);
+	}
+
+	public List<ScenarioSketch> loadScenarioSketches(final String branchName, final String issueId) {
+		final List<File> files = this.getScenarioSketchFiles(checkIdentifier(branchName),
+				checkIdentifier(issueId));
+		return ScenarioDocuXMLFileUtil.unmarshalListOfFiles(ScenarioSketch.class, files);
+	}
+
+	public ScenarioSketch loadScenarioSketch(final String branchName, final String issueId,
+			final String scenarioSketchId) {
+		final File file = this.getScenarioSketchFile(checkIdentifier(branchName), checkIdentifier(issueId),
+				checkIdentifier(scenarioSketchId));
+		return ScenarioDocuXMLFileUtil.unmarshal(ScenarioSketch.class, file);
+	}
+
+	public List<StepSketch> loadStepSketches(final String branchName, final String issueId,
+			final String scenarioSketchId) {
+		final List<File> files = this.getStepSketchFiles(checkIdentifier(branchName), issueId, scenarioSketchId);
+		return ScenarioDocuXMLFileUtil.unmarshalListOfFiles(StepSketch.class, files);
+	}
+
+	public StepSketch loadStepSketch(final String branchName, final String issueId,
+			final String scenarioSketchId, final String stepSketchId) {
+		final File file = this.getStepSketchXmlFile(checkIdentifier(branchName), checkIdentifier(issueId),
+				checkIdentifier(scenarioSketchId), stepSketchId);
+		return ScenarioDocuXMLFileUtil.unmarshal(StepSketch.class, file);
 	}
 
 }
